@@ -1,0 +1,31 @@
+name: locci-db
+
+services:
+  locci-db:
+    build: .
+    image: locci/db:latest
+    container_name: locci-db
+    ports:
+      - "5432:5432"
+    environment:
+      LOCCI_DB_USERNAME: postgres
+      LOCCI_DB_PASSWORD: password
+      LOCCI_DB_LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432'"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - locci-data:/app/data
+    restart: unless-stopped
+    networks:
+      - locci-network
+
+volumes:
+  locci-data:
+
+networks:
+  locci-network:
+    driver: bridge

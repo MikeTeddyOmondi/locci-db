@@ -1,0 +1,14 @@
+{
+  "port": 5433,
+  "host": "127.0.0.1",
+  "dataDir": "./.locci/db",
+  "logLevel": "debug",
+  "auth": {
+    "username": "postgres",
+    "passwordHash": "2577f101d5b5e7410961840fb3960015:8a96db7f06c1f7ca7a701bd0dec00121f1a2680837230e571e72734b0e22af5d373d3bf46515d65ad30e94e3072084a88e3b609348cd19e1f9cb3fb52daaf22d"
+  },
+  "security": {
+    "allowedHosts": ["127.0.0.1", "::1"],
+    "maxConnections": 5
+  }
+}

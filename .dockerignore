@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+*.md
+.DS_Store
+dist
+logs
+pglite-data
+.env
+.env.*
+tests
+*.test.ts
+coverage
+.vscode
+.idea
