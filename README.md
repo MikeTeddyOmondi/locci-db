@@ -279,7 +279,7 @@ const isValid = await verifyPassword('my-password', hash);
 Releases are automated. Pushing a version tag runs the `Release` workflow,
 which verifies the build, cross-compiles the binaries, creates the GitHub
 release with those binaries and their checksums attached, publishes to npm, and
-pushes multi-arch images to Docker Hub and GHCR.
+pushes multi-arch images to Docker Hub.
 
 ```bash
 npm version patch|minor|major   # updates package.json and creates the tag
@@ -291,9 +291,9 @@ prerelease version (one containing a hyphen, such as `1.0.0-alpha-1`) publishes
 to npm under the `next` dist-tag and does not move the `latest` Docker tag.
 
 Required repository secrets: `NPM_TOKEN`, `DOCKER_USERNAME`, `DOCKER_PASSWORD`.
-GHCR uses the built-in `GITHUB_TOKEN`. Set `GPG_PRIVATE_KEY` and
-`GPG_PASSPHRASE` to sign the release binaries; without them the release still
-completes, with a warning, and the binaries are published unsigned.
+Set `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` to sign the release binaries; without
+them the release still completes, with a warning, and the binaries are published
+unsigned.
 
 ## License
 

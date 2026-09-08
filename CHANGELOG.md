@@ -16,6 +16,11 @@ so write these entries for the people reading the release page.
   pattern, so the checksums file shipped unsigned in v1.0.0-alpha-1 while every
   binary beside it was signed.
 
+- Images are no longer pushed to GHCR. The push succeeded in v1.0.0-alpha-1 but
+  the package was created private, as GHCR does new packages by default, and
+  GitHub has no API to change that. Publishing to a registry nobody can pull
+  from is worse than not publishing there, and Docker Hub is public and working.
+
 - npm and image publishing now wait for the release binaries. They previously
   ran in parallel with the binary build, so a failure while compiling or signing
   could leave a version published to npm, which can never be republished, next

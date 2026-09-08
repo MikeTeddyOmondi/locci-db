@@ -587,13 +587,8 @@ docker build -t locci/db:latest -t locci/db:1.0.0 .
 # Test locally
 docker run -p 5432:5432 locci/db:latest
 
-# Push to Docker Hub
-docker tag locci/db:latest yourusername/locci-db:latest
-docker push yourusername/locci-db:latest
-
-# Push to GitHub Container Registry
-docker tag locci/db:latest ghcr.io/MikeTeddyOmondi/locci-db:latest
-docker push ghcr.io/MikeTeddyOmondi/locci-db:latest
+# Push to Docker Hub. Normally the release workflow does this on a version tag.
+docker push locci/db:latest
 ```
 
 ---

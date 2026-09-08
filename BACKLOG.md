@@ -53,20 +53,6 @@ npm dist-tag add @locci/db@1.0.0 latest
 Worth adding as a step in the release workflow, guarded on the version not being
 a prerelease, rather than leaving it as folklore.
 
-### The GHCR Package May Be Private
-
-**Files:** `.github/workflows/release.yml`
-
-The release pushes to Docker Hub and `ghcr.io/miketeddyomondi/locci-db`. The
-push succeeded, but an anonymous `docker manifest inspect` against GHCR returns
-`unauthorized`, which is what a private package looks like. GHCR creates new
-packages private by default, and nothing in the workflow changes that.
-
-Docker Hub is confirmed public and working, so this is not blocking. Confirm the
-GHCR package's visibility in the repository's package settings and make it
-public if it is meant to be a real distribution channel, otherwise drop it from
-the workflow rather than publishing to a registry nobody can pull from.
-
 ---
 
 ## Worth Doing
