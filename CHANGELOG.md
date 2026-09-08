@@ -9,6 +9,19 @@ so write these entries for the people reading the release page.
 
 ## Unreleased
 
+### Fixed
+
+- The `SHA256SUMS` signature was produced but never uploaded. The release only
+  attached `locci-db-*` and `SHA256SUMS`, and `SHA256SUMS.asc` matched neither
+  pattern, so the checksums file shipped unsigned in v1.0.0-alpha-1 while every
+  binary beside it was signed.
+
+- npm and image publishing now wait for the release binaries. They previously
+  ran in parallel with the binary build, so a failure while compiling or signing
+  could leave a version published to npm, which can never be republished, next
+  to a release with no artifacts. This is not theoretical: the Docker Hub push
+  in v1.0.0-alpha-1 failed on token scopes after npm had already published.
+
 ## [1.0.0-alpha-1] - 2026-09-09
 
 First tagged release. The server worked, but nothing around it did: the config

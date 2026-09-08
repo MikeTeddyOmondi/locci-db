@@ -25,21 +25,47 @@ existing volume, who has to chown it once out of band.
 **Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`
 
 CI builds and smoke tests the image on a native amd64 runner. The release builds
-`linux/amd64,linux/arm64` and pushes both, but only amd64 has ever been run.
+and pushes `linux/amd64,linux/arm64`, and as of v1.0.0-alpha-1 the arm64 half is
+confirmed to build and push. It has still never been executed.
 
 This is not hypothetical fragility. A Bun binary needs AVX, and a QEMU emulated
 CPU does not expose it, so an emulated smoke test segfaults with `CPU lacks AVX
 support` and proves nothing. Verifying arm64 honestly needs an arm64 runner.
 
-### Release Binaries Are Published Unsigned
+### npm `latest` Points At A Prerelease
 
 **Files:** `.github/workflows/release.yml`
 
-The signing step is written and verifies what it signs, but it is skipped with a
-warning unless `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` are set on the repository.
-Until a key exists, releases ship binaries and a `SHA256SUMS` file with no
-signature. `.asc` was chosen to match the convention `release-upload` already
-encodes, where `.asc` maps to `application/pgp-signature`.
+The release workflow publishes a hyphenated version under the `next` dist-tag
+and deliberately leaves the `latest` Docker tag alone. npm does not play along:
+it points `latest` at the first version ever published, whatever `--tag` says.
+So `1.0.0-alpha-1` is both `next` and `latest`, and a plain
+`npm install @locci/db` installs the alpha.
+
+Nothing can be done while a prerelease is the only version on the registry,
+because `latest` has to point somewhere. The fix belongs to the first stable
+release, and is easy to forget precisely because the workflow looks correct:
+
+```
+npm dist-tag add @locci/db@1.0.0 latest
+```
+
+Worth adding as a step in the release workflow, guarded on the version not being
+a prerelease, rather than leaving it as folklore.
+
+### The GHCR Package May Be Private
+
+**Files:** `.github/workflows/release.yml`
+
+The release pushes to Docker Hub and `ghcr.io/miketeddyomondi/locci-db`. The
+push succeeded, but an anonymous `docker manifest inspect` against GHCR returns
+`unauthorized`, which is what a private package looks like. GHCR creates new
+packages private by default, and nothing in the workflow changes that.
+
+Docker Hub is confirmed public and working, so this is not blocking. Confirm the
+GHCR package's visibility in the repository's package settings and make it
+public if it is meant to be a real distribution channel, otherwise drop it from
+the workflow rather than publishing to a registry nobody can pull from.
 
 ---
 
