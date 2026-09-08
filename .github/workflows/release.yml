@@ -170,6 +170,7 @@ jobs:
           files: |
             dist-bin/locci-db-*
             dist-bin/SHA256SUMS
+            dist-bin/SHA256SUMS.asc
 
   publish-npm:
     name: Publish to npm
