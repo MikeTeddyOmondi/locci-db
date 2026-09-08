@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Rejects em dashes and en dashes in staged content.
+#
+# Only lines this commit ADDS are checked, so an untouched line in a file you
+# happen to edit will not block you. Recast the sentence with a period, comma,
+# colon, or parentheses. Hyphens in compound words and CLI flags are fine.
+#
+# Enabled by `git config core.hooksPath .githooks`, which `pnpm install` runs
+# for you via the `prepare` script. Bypass a single commit with
+# `git commit --no-verify` when you genuinely need the character.
+
+set -e
+
+# Built from octal rather than written literally, so this file can pass its own
+# check. U+2014 EM DASH and U+2013 EN DASH, UTF-8.
+em=$(printf '\342\200\224')
+en=$(printf '\342\200\223')
+
+# Skip generated and vendored files: nothing there is prose we author.
+hits=$(git diff --cached -U0 --diff-filter=ACM -- \
+	':!pnpm-lock.yaml' ':!*.lock' ':!dist/**' ':!public/**' ':!node_modules/**' \
+	| awk -v pat="$em|$en" '
+		/^\+\+\+ b\// { file = substr($0, 7); next }
+		/^@@ / {
+			# @@ -old,n +new,n @@ ... the new-side start is what we report.
+			split(substr($3, 2), a, ",")
+			line = a[1] + 0
+			next
+		}
+		/^\+/ {
+			if ($0 ~ pat) printf "  %s:%d: %s\n", file, line, substr($0, 2)
+			line++
+		}
+	')
+
+if [ -n "$hits" ]; then
+	printf '\nCommit blocked: em dash or en dash in added lines.\n\n%s\n\n' "$hits"
+	printf 'Recast with a period, comma, colon, or parentheses.\n'
+	printf 'Deliberate? Commit again with --no-verify.\n\n'
+	exit 1
+fi

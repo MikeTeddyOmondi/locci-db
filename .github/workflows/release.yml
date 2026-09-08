@@ -1,0 +1,250 @@
+name: Release
+
+# Triggered by pushing a version tag, e.g. `git tag v1.0.0-alpha-1 && git push --tags`.
+# The GitHub Release is created here rather than by hand, because a release created
+# with GITHUB_TOKEN does not itself trigger further workflows.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      npm_tag: ${{ steps.meta.outputs.npm_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: bun install --frozen-lockfile
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:all
+
+      - name: Check CHANGELOG has a section for this version
+        run: node scripts/extract-changelog.mjs "$(node -p "require('./package.json').version")" > /dev/null
+
+      - name: Resolve version and check it matches the tag
+        id: meta
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+              exit 1
+            fi
+          fi
+
+          # A version containing a hyphen is a prerelease (1.0.0-alpha-1). It must
+          # not be published to npm as `latest` or tagged `latest` on a registry.
+          case "$PKG_VERSION" in
+            *-*)
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+              echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+              echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+  binaries:
+    name: Build release binaries
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Cross-compile
+        run: |
+          bun run scripts/gen-version.mjs
+          mkdir -p dist-bin
+          for target in \
+            "bun-linux-x64:locci-db-linux-x64" \
+            "bun-linux-arm64:locci-db-linux-arm64" \
+            "bun-linux-x64-musl:locci-db-linux-x64-musl" \
+            "bun-darwin-x64:locci-db-macos-x64" \
+            "bun-darwin-arm64:locci-db-macos-arm64" \
+            "bun-windows-x64:locci-db-windows-x64.exe"
+          do
+            bun_target="${target%%:*}"
+            out="${target#*:}"
+            echo "building $out"
+            bun build ./src/bun.ts --compile --minify --target="$bun_target" --outfile "dist-bin/$out"
+          done
+          ls -lh dist-bin
+
+      - name: Checksums
+        working-directory: dist-bin
+        run: |
+          sha256sum locci-db-* > SHA256SUMS
+          cat SHA256SUMS
+
+      # Detached PGP signatures (.asc), matching the artifact convention the
+      # suite's release-upload tool already expects. Skipped when no key is
+      # configured, so the release still completes without one.
+      - name: Sign artifacts
+        id: sign
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::warning::GPG_PRIVATE_KEY is not set, publishing unsigned binaries"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          cd dist-bin
+          for f in locci-db-* SHA256SUMS; do
+            gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "$GPG_PASSPHRASE" \
+              --armor --detach-sign --output "$f.asc" "$f"
+            gpg --verify "$f.asc" "$f"
+          done
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: dist-bin/*
+          retention-days: 1
+
+  github-release:
+    name: GitHub Release
+    needs: [verify, binaries]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: dist-bin
+
+      # The release body is the CHANGELOG section for this version. This fails
+      # the release rather than shipping a tag with empty notes.
+      - name: Extract release notes from CHANGELOG.md
+        run: node scripts/extract-changelog.mjs "${{ needs.verify.outputs.version }}" > RELEASE_NOTES.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ needs.verify.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true
+          prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
+          files: |
+            dist-bin/locci-db-*
+            dist-bin/SHA256SUMS
+
+  publish-npm:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: bun install --frozen-lockfile
+      - run: npm run build
+
+      - name: Publish
+        run: npm publish --access public --tag ${{ needs.verify.outputs.npm_tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-docker:
+    name: Publish image
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            locci/db
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ needs.verify.outputs.prerelease == 'false' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

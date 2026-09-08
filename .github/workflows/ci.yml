@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      # Bun is the package manager (bun.lock), but the published package targets
+      # Node, so the suite itself must run on Node. Using `bun run` here would
+      # execute vitest under Bun and hide Node-only regressions.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: E2E tests
+        run: npx vitest run --project e2e
+
+      - name: Coverage
+        if: matrix.node == '22'
+        run: npm run test:coverage
+
+  compile:
+    name: Compile binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Compile
+        run: bun run compile
+
+      - name: Smoke test the binary
+        run: |
+          ./dist-bin/locci-db --version
+          LOCCI_DB_USERNAME=postgres \
+          LOCCI_DB_PASSWORD=smoke-test-password \
+          LOCCI_DB_HOST=127.0.0.1 \
+          LOCCI_DB_PORT=5599 \
+          LOCCI_DB_DATA_DIR=./smoke-data \
+          ./dist-bin/locci-db start &
+          for i in $(seq 1 30); do
+            echo "handshake attempt $i"
+            if node -e "
+              const net=require('net');
+              const s=net.connect(5599,'127.0.0.1');
+              s.on('connect',()=>{const b=Buffer.alloc(8);b.writeInt32BE(8,0);b.writeInt32BE(80877103,4);s.write(b);});
+              s.on('data',()=>process.exit(0));
+              s.on('error',()=>process.exit(1));
+              s.on('close',()=>process.exit(1));
+              setTimeout(()=>process.exit(1),2000);
+            "; then
+              echo "binary answered the postgres handshake"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "binary never responded"
+          exit 1
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: locci/db:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test image
+        run: |
+          docker run -d --name locci-ci -p 5432:5432 \
+            -e LOCCI_DB_USERNAME=postgres \
+            -e LOCCI_DB_PASSWORD=smoke-test-password \
+            locci/db:ci
+          for i in $(seq 1 30); do
+            echo "handshake attempt $i"
+            if node -e "
+              const net=require('net');
+              const s=net.connect(5432,'127.0.0.1');
+              s.on('connect',()=>{const b=Buffer.alloc(8);b.writeInt32BE(8,0);b.writeInt32BE(80877103,4);s.write(b);});
+              s.on('data',()=>process.exit(0));
+              s.on('error',()=>process.exit(1));
+              s.on('close',()=>process.exit(1));
+              setTimeout(()=>process.exit(1),2000);
+            "; then
+              echo "image responds to the postgres handshake"
+              docker rm -f locci-ci
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "image never responded"
+          docker logs locci-ci
+          docker rm -f locci-ci
+          exit 1

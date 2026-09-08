@@ -1,39 +1,35 @@
 #!/usr/bin/env node
 
+// Must come before any import that reads process.env. Values already present
+// in the real environment win; .env only fills in what is missing.
+import { config as loadEnvFile } from "dotenv";
+loadEnvFile({ quiet: true });
+
 import { Command } from "commander";
 import { startServer } from "./index.js";
 import { hashPassword } from "./config.js";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { VERSION } from "./version.js";
 import { log } from "./utils.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const packageJson = JSON.parse(
-  readFileSync(join(__dirname, "..", "package.json"), "utf-8")
-);
 
 const program = new Command();
 
 program
   .name("locci-db")
   .description("Lightweight PostgreSQL-compatible database server")
-  .version(packageJson.version);
+  .version(VERSION);
 
 program
   .command("start")
   .description("Start the database server")
-  .option("-p, --port <port>", "Port to listen on", "5432")
-  .option("-h, --host <host>", "Host to bind to", "127.0.0.1")
+  .option("-p, --port <port>", "Port to listen on (default: 5432)")
+  .option("-h, --host <host>", "Host to bind to (default: 127.0.0.1)")
   .option("-d, --data-dir <path>", "Data directory path")
-  .option("-l, --log-level <level>", "Log level", "info")
+  .option("-l, --log-level <level>", "Log level (default: info)")
   .action(async (options) => {
-    // Override config with CLI options
-    process.env.LOCCI_DB_PORT = options.port;
-    process.env.LOCCI_DB_HOST = options.host;
+    // Only flags the user actually passed become overrides. Setting these
+    // unconditionally would make commander defaults outrank the config file.
+    if (options.port) process.env.LOCCI_DB_PORT = options.port;
+    if (options.host) process.env.LOCCI_DB_HOST = options.host;
     if (options.dataDir) process.env.LOCCI_DB_DATA_DIR = options.dataDir;
     if (options.logLevel) process.env.LOCCI_DB_LOG_LEVEL = options.logLevel;
 

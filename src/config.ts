@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cosmiconfigSync } from "cosmiconfig";
+import { defu } from "defu";
 import { randomBytes, scrypt } from "crypto";
 import { promisify } from "util";
 import { log } from "./utils.js";
@@ -92,46 +93,10 @@ export function loadConfig(): Config {
     },
   };
 
-  // Deep merge, env vars take precedence
-  const mergedConfig = deepMerge(config, removeUndefined(envConfig));
+  // defu merges right-to-left by falling priority and skips undefined values,
+  // so an env var that is not set falls through to the config file.
+  const mergedConfig = defu(envConfig, config);
 
   // Validate with Zod
   return ConfigSchema.parse(mergedConfig);
-}
-
-/**
- * Helper to remove undefined values
- */
-function removeUndefined(obj: any): any {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([_, v]) => v !== undefined)
-  );
-}
-
-/**
- * Simple deep merge
- */
-function deepMerge(target: any, source: any): any {
-  const output = { ...target };
-  if (isObject(target) && isObject(source)) {
-    Object.keys(source).forEach((key) => {
-      if (isObject(source[key])) {
-        if (!(key in target)) {
-          Object.assign(output, { [key]: source[key] });
-        } else {
-          output[key] = deepMerge(target[key], source[key]);
-        }
-      } else {
-        Object.assign(output, { [key]: source[key] });
-      }
-    });
-  }
-  return output;
-}
-
-/**
- * Check if value is a plain object
- */
-function isObject(item: any): boolean {
-  return item && typeof item === "object" && !Array.isArray(item);
 }
