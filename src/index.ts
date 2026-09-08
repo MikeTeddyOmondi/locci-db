@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 import { fromNodeSocket } from "pg-gateway/node";
 import { log } from "./utils.js";
 import { loadConfig, verifyPassword } from "./config.js";
+import { getEmbeddedPGliteAssets } from "./pglite-assets.js";
 
 export async function startServer() {
   const config = loadConfig();
@@ -18,7 +19,7 @@ export async function startServer() {
   await mkdir(dirname(dataDir), { recursive: true });
 
   log.info(`Initializing PGlite database at ${dataDir}`);
-  const db = new PGlite({ dataDir });
+  const db = new PGlite({ dataDir, ...getEmbeddedPGliteAssets() });
 
   let activeConnections = 0;
 

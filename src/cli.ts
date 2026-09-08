@@ -8,25 +8,15 @@ loadEnvFile({ quiet: true });
 import { Command } from "commander";
 import { startServer } from "./index.js";
 import { hashPassword } from "./config.js";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { VERSION } from "./version.js";
 import { log } from "./utils.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const packageJson = JSON.parse(
-  readFileSync(join(__dirname, "..", "package.json"), "utf-8")
-);
 
 const program = new Command();
 
 program
   .name("locci-db")
   .description("Lightweight PostgreSQL-compatible database server")
-  .version(packageJson.version);
+  .version(VERSION);
 
 program
   .command("start")
