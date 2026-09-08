@@ -19,10 +19,21 @@
     "dev": "tsx ./src/cli.ts",
     "start": "node ./dist/cli.js",
     "prepublishOnly": "npm run build",
-    "test": "node --test",
-    "lint": "eslint src/**/*.ts",
+    "test": "vitest run --project unit",
+    "lint": "oxlint --deny-warnings",
     "docker:build": "docker build -t locci/db:latest .",
-    "docker:run": "docker run -p 5432:5432 --env-file .env locci/db:latest"
+    "docker:run": "docker run -p 5432:5432 --env-file .env locci/db:latest",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test:unit": "vitest run --project unit",
+    "test:e2e": "npm run build && vitest run --project e2e",
+    "test:all": "npm run build && vitest run",
+    "test:watch": "vitest --project unit",
+    "test:coverage": "vitest run --project unit --coverage",
+    "lint:fix": "oxlint --fix",
+    "prebuild": "node scripts/gen-version.mjs",
+    "pretypecheck": "node scripts/gen-version.mjs",
+    "compile": "bun build ./src/bun.ts --compile --minify --outfile dist-bin/locci-db",
+    "precompile": "node scripts/gen-version.mjs"
   },
   "keywords": [
     "postgresql",
@@ -42,7 +53,7 @@
     "url": "https://github.com/MikeTeddyOmondi/locci-db/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "files": [
     "dist",
@@ -54,19 +65,19 @@
     "@electric-sql/pglite": "^0.2.9",
     "commander": "^12.0.0",
     "cosmiconfig": "^9.0.0",
+    "defu": "^6.1.7",
+    "dotenv": "^17.4.2",
     "pg-gateway": "0.3.0-beta.3",
     "pino": "^9.5.0",
     "pino-pretty": "^11.3.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/node": "^20.14.11",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "globals": "^16.5.0",
+    "@types/node": "^22.20.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "oxlint": "^1.82.0",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3",
-    "typescript-eslint": "^8.47.0"
+    "vitest": "^5.0.0"
   }
 }

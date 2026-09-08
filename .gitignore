@@ -38,3 +38,7 @@ logs/
 # Runtime
 tmp/
 temp/
+
+# Compiled single-file binaries
+dist-bin/
+node-compile-cache/

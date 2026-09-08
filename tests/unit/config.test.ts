@@ -1,18 +1,17 @@
-import { test } from 'node:test';
-import assert from 'node:assert';
-import { hashPassword, verifyPassword } from '../src/config.js';
+import { test, expect } from 'vitest';
+import { hashPassword, verifyPassword } from '../../src/config.js';
 
 test('password hashing and verification', async () => {
   const password = 'test-password-123';
   const hash = await hashPassword(password);
 
-  assert.ok(hash.includes(':'), 'Hash should contain salt separator');
+  expect(hash).toContain(':');
 
   const isValid = await verifyPassword(password, hash);
-  assert.strictEqual(isValid, true, 'Password should verify correctly');
+  expect(isValid).toBe(true);
 
   const isInvalid = await verifyPassword('wrong-password', hash);
-  assert.strictEqual(isInvalid, false, 'Wrong password should not verify');
+  expect(isInvalid).toBe(false);
 });
 
 test('password hash format', async () => {
@@ -20,10 +19,10 @@ test('password hash format', async () => {
   const hash = await hashPassword(password);
 
   const [salt, key] = hash.split(':');
-  assert.ok(salt, 'Salt should exist');
-  assert.ok(key, 'Key should exist');
-  assert.strictEqual(salt.length, 32, 'Salt should be 32 characters (16 bytes hex)');
-  assert.strictEqual(key.length, 128, 'Key should be 128 characters (64 bytes hex)');
+  expect(salt).toBeTruthy();
+  expect(key).toBeTruthy();
+  expect(salt).toHaveLength(32); // 16 bytes hex
+  expect(key).toHaveLength(128); // 64 bytes hex
 });
 
 test('different passwords produce different hashes', async () => {
@@ -33,7 +32,7 @@ test('different passwords produce different hashes', async () => {
   const hash1 = await hashPassword(password1);
   const hash2 = await hashPassword(password2);
 
-  assert.notStrictEqual(hash1, hash2, 'Different passwords should produce different hashes');
+  expect(hash1).not.toBe(hash2);
 });
 
 test('same password produces different hashes', async () => {
@@ -42,11 +41,11 @@ test('same password produces different hashes', async () => {
   const hash1 = await hashPassword(password);
   const hash2 = await hashPassword(password);
 
-  assert.notStrictEqual(hash1, hash2, 'Same password with different salt should produce different hash');
+  expect(hash1).not.toBe(hash2);
 
   // But both should verify correctly
-  assert.ok(await verifyPassword(password, hash1));
-  assert.ok(await verifyPassword(password, hash2));
+  expect(await verifyPassword(password, hash1)).toBe(true);
+  expect(await verifyPassword(password, hash2)).toBe(true);
 });
 
 test('verify password with invalid hash format', async () => {
@@ -54,5 +53,5 @@ test('verify password with invalid hash format', async () => {
   const invalidHash = 'invalid-hash';
 
   const result = await verifyPassword(password, invalidHash);
-  assert.strictEqual(result, false, 'Invalid hash format should return false');
+  expect(result).toBe(false);
 });
