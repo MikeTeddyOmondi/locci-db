@@ -58,8 +58,13 @@ This generates a secure hash to use in configuration files instead of plaintext 
 Configuration is loaded from multiple sources in this order:
 1. CLI flags (highest priority)
 2. Environment variables
-3. Configuration files
-4. Defaults (lowest priority)
+3. A `.env` file in the working directory
+4. Configuration files
+5. Built-in defaults (lowest priority)
+
+A value set at a higher level overrides the same value below it. Levels are
+merged per field, so a config file can supply `auth` while an environment
+variable overrides only the port.
 
 ### Environment Variables
 
@@ -72,6 +77,10 @@ export LOCCI_DB_PASSWORD_HASH="salt:derivedkey"  # If using hash
 export LOCCI_DB_DATA_DIR=/path/to/data
 export LOCCI_DB_LOG_LEVEL=info
 ```
+
+These can also live in a `.env` file in the working directory, which is read at
+startup. Real environment variables take precedence over the file, so exporting
+a value still overrides it.
 
 ### Configuration File
 
@@ -102,7 +111,38 @@ Supported file formats:
 - `locci-db.config.js`
 - `package.json` (under `locci-db` key)
 
+## Single-file binary
+
+The server compiles to a standalone executable with Bun. It embeds the Bun
+runtime and PGlite's WASM, so it needs no Node, no Bun, and no `node_modules`
+on the target machine.
+
+```bash
+bun run compile        # -> dist-bin/locci-db
+./dist-bin/locci-db start
+```
+
+Every release publishes prebuilt binaries for Linux (x64, arm64, x64-musl),
+macOS (x64, arm64), and Windows (x64), alongside a `SHA256SUMS` file. Verify a
+download before running it:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+When a signing key is configured for the repository, each artifact also ships a
+detached PGP signature (`.asc`):
+
+```bash
+gpg --verify locci-db-linux-x64.asc locci-db-linux-x64
+```
+
 ## Docker
+
+The image ships the compiled binary on `distroless/cc`, so it contains no Node,
+no Bun, and no `node_modules`. Images are built for `linux/amd64` and
+`linux/arm64`.
+
 
 ### Build
 
@@ -124,7 +164,7 @@ docker run -d \
 ### Docker Compose
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Security Features
@@ -134,19 +174,20 @@ docker-compose up -d
 - **IP Whitelisting**: Restrict connections to authorized hosts
 - **Input Validation**: Zod schema validation for all configurations
 - **Graceful Shutdown**: Properly closes connections on SIGTERM/SIGINT
-- **Non-root User**: Docker image runs as non-root user
 
 ## Development
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
-- npm or yarn
+- [Bun](https://bun.sh/) (package manager, and required to compile binaries)
+- Node.js >= 20.0.0 (the published package targets Node)
 
 ### Installation
 
+Dependencies are managed with Bun (`bun.lock`):
+
 ```bash
-npm install
+bun install
 ```
 
 ### Building
@@ -163,36 +204,32 @@ npm run dev
 
 ### Testing
 
-```bash
-npm test
-```
-
-### Linting
+Tests run on [Vitest](https://vitest.dev/) under Node, split into two projects:
 
 ```bash
-npm run lint
+npm test           # unit tests
+npm run test:unit  # same, explicit
+npm run test:e2e   # builds, then boots the real server and connects to it
+npm run test:all   # both projects
+npm run test:watch # unit tests in watch mode
+npm run test:coverage
 ```
 
-## Project Structure
+Unit specs live in `tests/unit`, end-to-end specs in `tests/e2e`. E2E specs bind
+real ports, so they run serially with longer timeouts.
 
+### Linting and type checking
+
+```bash
+npm run lint      # oxlint, warnings are errors
+npm run lint:fix  # apply autofixes
+npm run typecheck # tsc over src and tests
 ```
-locci-db/
-├── src/
-│   ├── cli.ts              # CLI entry point
-│   ├── index.ts            # Main server logic
-│   ├── utils.ts            # Utilities and logging
-│   ├── config.ts           # Configuration management
-│   └── types.ts            # TypeScript types
-├── bin/
-│   └── locci-db.js         # Executable shim
-├── dist/                   # Compiled output
-├── .dockerignore
-├── Dockerfile
-├── docker-compose.yml
-├── tsconfig.json
-├── package.json
-├── README.md
-└── LICENSE
+
+### Compiling
+
+```bash
+npm run compile   # single-file binary into dist-bin/
 ```
 
 ## API
@@ -239,26 +276,24 @@ const isValid = await verifyPassword('my-password', hash);
 
 ## Publishing
 
-### Pre-publish Checklist
-
-1. Update version: `npm version patch|minor|major`
-2. Test locally: `npm run build && npm test`
-3. Lint: `npm run lint`
-4. Build: `npm run build`
-
-### Publish to NPM
+Releases are automated. Pushing a version tag runs the `Release` workflow,
+which verifies the build, cross-compiles the binaries, creates the GitHub
+release with those binaries and their checksums attached, publishes to npm, and
+pushes multi-arch images to Docker Hub and GHCR.
 
 ```bash
-npm login
-npm publish --access public
+npm version patch|minor|major   # updates package.json and creates the tag
+git push --follow-tags
 ```
 
-### Publish to Docker Hub
+The workflow fails if the tag does not match the version in `package.json`. A
+prerelease version (one containing a hyphen, such as `1.0.0-alpha-1`) publishes
+to npm under the `next` dist-tag and does not move the `latest` Docker tag.
 
-```bash
-docker tag locci/db:latest ranckosolutionsinc/locci-db:latest
-docker push ranckosolutionsinc/locci-db:latest
-```
+Required repository secrets: `NPM_TOKEN`, `DOCKER_USERNAME`, `DOCKER_PASSWORD`.
+GHCR uses the built-in `GITHUB_TOKEN`. Set `GPG_PRIVATE_KEY` and
+`GPG_PASSPHRASE` to sign the release binaries; without them the release still
+completes, with a warning, and the binaries are published unsigned.
 
 ## License
 
@@ -271,6 +306,9 @@ MIT - See LICENSE file for details
 - [Pino](https://getpino.io/) - Fast logger
 - [Commander](https://github.com/tj/commander.js) - CLI framework
 - [Zod](https://zod.dev/) - TypeScript-first schema validation
+- [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig) - Configuration file discovery
+- [defu](https://github.com/unjs/defu) - Configuration merging
+- [dotenv](https://github.com/motdotla/dotenv) - `.env` file loading
 
 ## Contributing
 
