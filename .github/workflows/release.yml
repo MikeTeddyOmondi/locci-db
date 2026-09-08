@@ -173,7 +173,11 @@ jobs:
 
   publish-npm:
     name: Publish to npm
-    needs: verify
+    # Waits on binaries as well as verify. Publishing to npm is the one step
+    # that cannot be undone or repeated: if the binary or signing step failed
+    # after npm had published, this version number would be burned and a fixed
+    # re-tag could never publish it.
+    needs: [verify, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -199,7 +203,7 @@ jobs:
 
   publish-docker:
     name: Publish image
-    needs: verify
+    needs: [verify, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: read
