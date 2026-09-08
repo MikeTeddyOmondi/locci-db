@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "tsx ./src/cli.ts",
     "start": "node ./dist/cli.js",
     "prepublishOnly": "npm run build",

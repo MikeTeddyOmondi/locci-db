@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# Commit message rules.
+#
+#   1. One line. Details belong in BACKLOG.md or CHANGELOG.md, where they can be
+#      edited, reordered and read in one place. A commit message cannot.
+#   2. No AI attribution. Session links and assistant co-author trailers say
+#      nothing about the change and outlive the tool that wrote them. The author
+#      of a commit is the person who ran it.
+#
+# Enabled by `git config core.hooksPath .githooks`. Bypass with --no-verify.
+
+set -e
+
+msg_file="$1"
+
+# Drop comment lines: a template or a --verbose diff is not part of the message.
+msg=$(grep -v '^#' "$msg_file" || true)
+subject=$(printf '%s\n' "$msg" | sed -n '1p')
+
+fail () {
+	printf '\nCommit blocked: %s\n\n' "$1"
+	shift
+	printf '%s\n' "$@"
+	printf '\nDeliberate? Commit again with --no-verify.\n\n'
+	exit 1
+}
+
+banned='Claude-Session|Co-[Aa]uthored-[Bb]y:.*(Claude|Anthropic|Copilot|Cursor)|Generated with .*Claude|claude\.ai/code|noreply@anthropic\.com|🤖'
+hits=$(printf '%s\n' "$msg" | grep -nE "$banned" || true)
+if [ -n "$hits" ]; then
+	fail 'AI attribution in the commit message.' \
+		"$(printf '%s\n' "$hits" | sed 's/^/  /')" \
+		'' 'Drop the trailer. The commit author is whoever ran the commit.'
+fi
+
+# Merges, reverts and fixups carry a generated body. Leave them alone.
+case "$subject" in
+	Merge\ *|Revert\ *|fixup!*|squash!*|amend!*) exit 0 ;;
+esac
+
+body_lines=$(printf '%s\n' "$msg" | sed '1d' | grep -c '[^[:space:]]' || true)
+if [ "$body_lines" -gt 0 ]; then
+	fail 'commit messages are one line.' \
+		"  subject: $subject" \
+		"  plus $body_lines line(s) of body" \
+		'' \
+		'Put the detail in BACKLOG.md or CHANGELOG.md and commit that alongside.'
+fi
